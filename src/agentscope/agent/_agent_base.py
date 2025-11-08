@@ -245,10 +245,12 @@ class AgentBase(StateModule, metaclass=_AgentMeta):
                 # Close the miniaudio player
                 player.close()
             stream_prefix = self._stream_prefix.pop(msg.id)
-            if "text" in stream_prefix and not stream_prefix["text"].endswith(
-                "\n",
-            ):
-                print()
+            # If any textual content (text or thinking) was printed and no newline at end, add one.
+            text_end_with_nl = stream_prefix.get("text", "").endswith("\n")
+            thinking_end_with_nl = stream_prefix.get("thinking", "").endswith("\n")
+            printed_any_text = ("text" in stream_prefix) or ("thinking" in stream_prefix)
+            if printed_any_text and not (text_end_with_nl or thinking_end_with_nl):
+                print() 
 
     def _process_audio_block(
         self,
@@ -364,24 +366,31 @@ class AgentBase(StateModule, metaclass=_AgentMeta):
                 A list of textual content to be printed together. Here we
                 gather the text and thinking blocks to print them together.
         """
-        thinking_and_text_to_print.append(
-            f"{name_prefix}: {text_content}",
-        )
-        # The accumulated text and thinking blocks to print
-        to_print = "\n".join(thinking_and_text_to_print)
-
-        # The text prefix that has been printed
+        # Initialize stream cache for this message id
         if msg_id not in self._stream_prefix:
             self._stream_prefix[msg_id] = {}
 
-        text_prefix = self._stream_prefix[msg_id].get("text", "")
+        # Determine block key by type (distinguish text vs thinking)
+        # We key by logical type to avoid cross-type interference.
+        block_key = "thinking" if name_prefix.endswith("(thinking)") else "text"
+        current_line = f"{name_prefix}: {text_content}"
+        line_prefix = self._stream_prefix[msg_id].get(block_key, "")
+        last_type = self._stream_prefix[msg_id].get("last_type", None)
 
-        # Only print when there is new text content
-        if len(to_print) > len(text_prefix):
-            print(to_print[len(text_prefix) :], end="")
+        # Only print when there is new content for this specific block type
+        if len(current_line) > len(line_prefix):
+            # If last printed type is different, move to a new line first
+            if last_type is not None and last_type != block_key:
+                print("\n", end="")
 
-            # Save the printed text prefix
-            self._stream_prefix[msg_id]["text"] = to_print
+            print(current_line[len(line_prefix) :], end="")
+            # Save the printed prefix for this block type
+            self._stream_prefix[msg_id][block_key] = current_line
+            # Update the last printed type
+            self._stream_prefix[msg_id]["last_type"] = block_key
+
+        # Record this line for intra-chunk ordering hints
+        thinking_and_text_to_print.append(current_line)
 
     def _print_last_block(
         self,
@@ -397,11 +406,15 @@ class AgentBase(StateModule, metaclass=_AgentMeta):
             msg (`Msg`):
                 The message object
         """
-        text_prefix = self._stream_prefix.get(msg.id, {}).get("text", "")
+        prefixes = self._stream_prefix.get(msg.id, {})
+        text_prefix = prefixes.get("text", "")
+        thinking_prefix = prefixes.get("thinking", "")
 
-        if text_prefix:
+        if text_prefix or thinking_prefix:
             # Add a newline to separate from previous text content
-            print_newline = "" if text_prefix.endswith("\n") else "\n"
+            print_newline = (
+                "" if (text_prefix.endswith("\n") or thinking_prefix.endswith("\n")) else "\n"
+            )
             print(
                 f"{print_newline}"
                 f"{json.dumps(block, indent=4, ensure_ascii=False)}",
