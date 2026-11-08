@@ -4,6 +4,7 @@ from typing import Literal
 
 import shortuuid
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 from .._utils._common import _get_timestamp
 
@@ -13,7 +14,7 @@ class SubTask(BaseModel):
 
     name: str = Field(
         description=(
-            "The subtask name, should be concise, descriptive and not"
+            "The subtask name, should be concise, descriptive and not "
             "exceed 10 words."
         ),
     )
@@ -31,20 +32,26 @@ class SubTask(BaseModel):
             "concrete and measurable."
         ),
     )
-    outcome: str | None = Field(
+    # The following fields are bookkeeping fields maintained by the plan
+    # notebook itself. They are excluded from the JSON schema so that the
+    # LLM only sees (and fills) the fields it is responsible for when
+    # calling `create_plan` or `revise_current_plan`.
+    outcome: SkipJsonSchema[str | None] = Field(
         description="The actual outcome of the subtask.",
         default=None,
     )
-    state: Literal["todo", "in_progress", "done", "abandoned"] = Field(
+    state: SkipJsonSchema[
+        Literal["todo", "in_progress", "done", "abandoned"]
+    ] = Field(
         description="The state of the subtask.",
         default="todo",
     )
-    created_at: str = Field(
+    created_at: SkipJsonSchema[str] = Field(
         description="The time the subtask was created.",
         default_factory=_get_timestamp,
     )
     # Result related fields
-    finished_at: str | None = Field(
+    finished_at: SkipJsonSchema[str | None] = Field(
         description="The time the subtask was finished.",
         default=None,
     )

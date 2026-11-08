@@ -7,6 +7,7 @@ from agentscope.agent import ReActAgent
 from agentscope.formatter import DashScopeChatFormatter
 from agentscope.model import DashScopeChatModel
 from agentscope.plan import SubTask, Plan, PlanNotebook
+from agentscope.tool import Toolkit
 
 
 class PlanTest(IsolatedAsyncioTestCase):
@@ -821,3 +822,43 @@ Subtask at index 2:
             hook_calls[-1],
             "P1",
         )
+
+    async def test_subtask_tool_schema(self) -> None:
+        """Test the subtask JSON schema exposed to the LLM only contains the
+        fields it is responsible for, and marks them as required
+        (https://github.com/agentscope-ai/agentscope/issues/1227)."""
+        notebook = PlanNotebook()
+        toolkit = Toolkit()
+        for tool in notebook.list_tools():
+            toolkit.register_tool_function(tool)
+
+        schemas = {
+            _["function"]["name"]: _["function"]["parameters"]
+            for _ in toolkit.get_json_schemas()
+        }
+
+        expected_fields = ["name", "description", "expected_outcome"]
+        for tool_name in ["create_plan", "revise_current_plan"]:
+            subtask_schema = schemas[tool_name]["$defs"]["SubTask"]
+            self.assertListEqual(
+                list(subtask_schema["properties"].keys()),
+                expected_fields,
+            )
+            self.assertListEqual(subtask_schema["required"], expected_fields)
+
+        self.assertIn(
+            "`name`, `description` and `expected_outcome`",
+            schemas["create_plan"]["properties"]["subtasks"]["description"],
+        )
+
+        # The bookkeeping fields still work normally
+        subtask = SubTask.model_validate(
+            {"name": "n", "description": "d", "expected_outcome": "e"},
+        )
+        self.assertEqual(subtask.state, "todo")
+        self.assertIsNone(subtask.outcome)
+        self.assertIsNone(subtask.finished_at)
+        self.assertIsInstance(subtask.created_at, str)
+
+        restored = SubTask.model_validate(subtask.model_dump())
+        self.assertEqual(restored, subtask)

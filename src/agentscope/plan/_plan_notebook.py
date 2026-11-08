@@ -251,7 +251,9 @@ class PlanNotebook(StateModule):
                 The expected outcome of the plan, which should be specific,
                 concrete and measurable.
             subtasks (`list[SubTask]`):
-                A list of sequential sub-tasks that make up the plan.
+                A list of sequential sub-tasks that make up the plan. Each
+                sub-task MUST be an object with the three required string
+                fields `name`, `description` and `expected_outcome`.
 
         Returns:
             `ToolResponse`:
@@ -318,7 +320,9 @@ class PlanNotebook(StateModule):
                 the sub-task at the given index will be deleted.
             subtask (`SubTask | None`, optional):
                 The sub-task to be added or revised. Required if action is
-                "add" or "revise".
+                "add" or "revise". It MUST be an object with the three
+                required string fields `name`, `description` and
+                `expected_outcome`.
 
         Raises:
             `ValueError`:
